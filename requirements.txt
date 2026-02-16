@@ -1,0 +1,15 @@
+pandas
+numpy
+matplotlib
+avro
+pytz
+
+# EEG processing
+mne
+yasa
+
+# Visualization & Dashboard
+streamlit
+plotly
+scipy
+scikit-learn
