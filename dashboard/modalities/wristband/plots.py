@@ -22,8 +22,23 @@ def availability_timeline_figure(df_timeline: pd.DataFrame, wear_col: str) -> go
     figure.update_layout(
         yaxis={"showticklabels": False, "showgrid": False, "zeroline": False, "title": None},
         xaxis_title="Date/Time",
-        coloraxis_colorbar={"title": "Wearing %"},
-        margin={"l": 20, "r": 20, "t": 45, "b": 20},
+        # Place the colorbar on the right with fixed ticks to avoid label overlap
+        coloraxis_colorbar={
+            "title": "Wearing %",
+            "orientation": "v",
+            "thickness": 10,
+            "len": 1,
+            "y": 0.5,
+            "yanchor": "middle",
+            "x": 1,
+            "xanchor": "left",
+            "tickmode": "array",
+            "tickvals": [0, 100],
+            "ticktext": ["0%", "100%"],
+            "tickfont": {"size": 10},
+        },
+        margin={"l": 20, "r": 120, "t": 40, "b": 20},
+        template="plotly_white",
     )
     return figure
 

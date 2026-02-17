@@ -12,13 +12,17 @@ WEARING_FILE_HINT = "wearing-detection"
 
 
 def _parse_datetime(df: pd.DataFrame) -> pd.Series:
-    if "timestamp_unix" in df.columns:
-        ts = pd.to_numeric(df["timestamp_unix"], errors="coerce")
-        if ts.notna().any() and ts.max() > 1e12:
-            ts = ts // 1000
-        return pd.to_datetime(ts, unit="s", errors="coerce")
+    """Parse timestamps using ISO string column only.
+
+    The dashboard now relies exclusively on `timestamp_iso` for datetime
+    alignment across modalities (EEG/TET and wristband). If `timestamp_iso`
+    is not present the function returns a NaT series so downstream code
+    treats the rows as missing timestamps.
+    """
     if "timestamp_iso" in df.columns:
         return pd.to_datetime(df["timestamp_iso"], errors="coerce")
+
+    # Strict ISO-only policy: do not attempt to convert unix timestamps here.
     return pd.Series(pd.NaT, index=df.index)
 
 
