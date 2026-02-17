@@ -33,26 +33,6 @@ def _find_wearing_col(columns: list[str]) -> str | None:
     return None
 
 
-def load_aggregated_data(participant_path: str | Path) -> dict[str, pd.DataFrame]:
-    """Load all aggregated CSV files found under participant folder."""
-    participant_dir = Path(participant_path)
-    aggregated_data: dict[str, pd.DataFrame] = {}
-
-    if not participant_dir.exists():
-        return aggregated_data
-
-    for csv_path in participant_dir.rglob("*.csv"):
-        parent_name = csv_path.parent.name.lower()
-        if "aggr" not in parent_name and "aggregated" not in parent_name:
-            continue
-        try:
-            aggregated_data[csv_path.name] = pd.read_csv(csv_path)
-        except Exception:
-            continue
-
-    return aggregated_data
-
-
 def load_wearing_detection_data(participant_path: str | Path) -> tuple[pd.DataFrame, str | None]:
     """Load and concatenate all EmbracePlus wearing-detection files."""
     participant_dir = Path(participant_path)

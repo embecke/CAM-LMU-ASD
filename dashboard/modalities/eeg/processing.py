@@ -12,15 +12,6 @@ REPORT_FILE_HINT = "report"
 DREEM_HINT = "dreem"
 
 
-def _first_valid_datetime(series: pd.Series) -> pd.Timestamp:
-    """Return the first non-null datetime parsed from a series, or NaT."""
-    if series is None:
-        return pd.NaT
-    valid = series.dropna()
-    if valid.empty:
-        return pd.NaT
-    return pd.to_datetime(valid.iloc[0], errors="coerce")
-
 
 def _read_key_value_csv(csv_path: Path, debug: bool = False) -> dict:
     """Read CSVs that contain key,value rows and return a dict of values.

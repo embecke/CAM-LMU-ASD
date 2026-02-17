@@ -7,43 +7,7 @@ import plotly.graph_objects as go
 from dashboard.config import WEARING_COLOR_MAP, WEARING_LABELS
 
 
-def availability_timeline_figure(df_timeline: pd.DataFrame, wear_col: str) -> go.Figure:
-    figure = px.scatter(
-        df_timeline,
-        x="datetime",
-        y="timeline_y",
-        color=wear_col,
-        color_continuous_scale=["#ff4136", "#ffe066", "#b6e63e", "#2ecc40"],
-        labels={wear_col: "Wearing %"},
-        title="Wristband Wearing Detection Timeline",
-        height=170,
-    )
-    figure.update_traces(marker={"size": 6})
-    figure.update_layout(
-        yaxis={"showticklabels": False, "showgrid": False, "zeroline": False, "title": None},
-        xaxis_title="Date/Time",
-        # Place the colorbar on the right with fixed ticks to avoid label overlap
-        coloraxis_colorbar={
-            "title": "Wearing %",
-            "orientation": "v",
-            "thickness": 10,
-            "len": 1,
-            "y": 0.5,
-            "yanchor": "middle",
-            "x": 1,
-            "xanchor": "left",
-            "tickmode": "array",
-            "tickvals": [0, 100],
-            "ticktext": ["0%", "100%"],
-            "tickfont": {"size": 10},
-        },
-        margin={"l": 20, "r": 120, "t": 40, "b": 20},
-        template="plotly_white",
-    )
-    return figure
-
-
-def stacked_hours_figure(hours_per_bin: pd.DataFrame) -> go.Figure:
+def plot_wristband_stacked(hours_per_bin: pd.DataFrame) -> go.Figure:
     figure = go.Figure()
 
     for label in WEARING_LABELS[::-1]:
@@ -67,7 +31,7 @@ def stacked_hours_figure(hours_per_bin: pd.DataFrame) -> go.Figure:
     return figure
 
 
-def detailed_events_figure(df_all: pd.DataFrame, wear_col: str) -> go.Figure:
+def plot_wristband_timeline(df_all: pd.DataFrame, wear_col: str) -> go.Figure:
     return px.scatter(
         df_all,
         x="datetime",
@@ -78,25 +42,7 @@ def detailed_events_figure(df_all: pd.DataFrame, wear_col: str) -> go.Figure:
     )
 
 
-def generic_aggregated_biomarker_figure(df: pd.DataFrame, selected_cols: list[str]) -> go.Figure:
-    figure = go.Figure()
-    for column in selected_cols:
-        figure.add_trace(
-            go.Scatter(
-                x=list(range(len(df))),
-                y=df[column],
-                mode="lines",
-                name=column,
-                line={"width": 1},
-            )
-        )
-
-    figure.update_layout(
-        title="Wristband Biomarkers - Aggregated File",
-        xaxis_title="Time (minutes)",
-        yaxis_title="Value",
-        height=500,
-        template="plotly_white",
-        hovermode="x unified",
-    )
-    return figure
+__all__ = [
+    "plot_wristband_stacked",
+    "plot_wristband_timeline",
+]
