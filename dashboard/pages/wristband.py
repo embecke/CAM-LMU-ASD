@@ -21,8 +21,8 @@ def render_wristband_tab(df_all: pd.DataFrame, wear_col: str | None) -> None:
         st.subheader("Detailed Wearing Detection Events (All Days)")
         st.plotly_chart(plot_wristband_timeline(valid_df, wear_col), use_container_width=True)
 
-        show_cols = detailed_columns(valid_df, wear_col)
-        st.dataframe(valid_df[show_cols], use_container_width=True)
+        #show_cols = detailed_columns(valid_df, wear_col)
+        #st.dataframe(valid_df[show_cols], use_container_width=True)
         return
 
     st.warning("No EmbracePlus wearing detection files found for this participant.")
