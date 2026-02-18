@@ -11,7 +11,7 @@ def row_center_y(row_heights: list[float], row_index: int) -> float:
     return 1.0 - (sum(row_heights[:row_index]) + row_heights[row_index] / 2.0)
 
 
-def build_combined_overview(df_all: pd.DataFrame, wear_col: str | None, df_sleep: pd.DataFrame, df_meditation: pd.DataFrame) -> go.Figure | None:
+def build_combined_overview(df_all: pd.DataFrame, wear_col: str | None, df_sleep: pd.DataFrame, df_meditation: pd.DataFrame, df_subjective: pd.DataFrame) -> go.Figure | None:
     """Return stacked timeline combining wristband wearing and sleep intervals."""
     timeline_df = pd.DataFrame()
     if wear_col is not None and not df_all.empty:
@@ -303,10 +303,10 @@ def build_combined_overview(df_all: pd.DataFrame, wear_col: str | None, df_sleep
     return fig
 
 
-def render_overview_tab(df_all: pd.DataFrame, wear_col: str | None, df_sleep: pd.DataFrame, df_meditation: pd.DataFrame) -> None:
+def render_overview_tab(df_all: pd.DataFrame, wear_col: str | None, df_sleep: pd.DataFrame, df_meditation: pd.DataFrame, df_subjective: pd.DataFrame) -> None:
     st.header("Data Overview")
-    st.subheader("Combined Timeline: Wristband + Sleep + Meditation")
-    combined = build_combined_overview(df_all, wear_col, df_sleep, df_meditation)
+    st.subheader("Combined Timeline: Wristband + Sleep + Meditation + Subjective")
+    combined = build_combined_overview(df_all, wear_col, df_sleep, df_meditation, df_subjective)
     if combined:
         st.plotly_chart(combined, use_container_width=True)
     else:

@@ -11,8 +11,9 @@ from dashboard.modalities.wristband.processing import summarize_collection
 from dashboard.pages.meditation import render_meditation_tab
 from dashboard.pages.overview import render_overview_tab
 from dashboard.pages.sleep import render_sleep_tab
+from dashboard.pages.subjective import render_subjective_tab
 from dashboard.pages.wristband import render_wristband_tab
-from dashboard.services.data_loader import get_sleep_reports, get_wristband_data, get_meditation_data
+from dashboard.services.data_loader import get_sleep_reports, get_wristband_data, get_meditation_data, get_subjective_data
 
 
 def _render_summary(days_with_data: int, total_hours: float, sleep_nights: int, sleep_hours: float, meditation_sessions: int, meditation_hours: float) -> None:
@@ -74,6 +75,7 @@ def run_dashboard() -> None:
         df_wristband, wristband_wear_col = get_wristband_data(str(participant_dir))
         df_sleep = get_sleep_reports(str(participant_dir))
         df_meditation = get_meditation_data(str(participant_dir))
+        df_subjective = get_subjective_data(str(participant_dir))
         wristband_summary, wristband_summary_hours = summarize_collection(df_wristband)
         sleep_summary, sleep_summary_hours = summarize_sleep_recordings(df_sleep)
         meditation_summary, meditation_hours = summarize_meditation_recordings(df_meditation)
@@ -81,10 +83,10 @@ def run_dashboard() -> None:
 
     _render_summary(wristband_summary, wristband_summary_hours, sleep_summary, sleep_summary_hours, meditation_summary, meditation_hours)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📅 Data Overview", "❤️ Wristband Biomarkers", "🌙 Sleep Data", "🧘 Meditation Data"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📅 Data Overview", "❤️ Wristband Biomarkers", "🌙 Sleep Data", "🧘 Meditation Data", "📝 Subjective Data"])
 
     with tab1:
-        render_overview_tab(df_wristband, wristband_wear_col, df_sleep, df_meditation)
+        render_overview_tab(df_wristband, wristband_wear_col, df_sleep, df_meditation, df_subjective)
 
     with tab2:
         render_wristband_tab(df_wristband, wristband_wear_col)
@@ -94,6 +96,9 @@ def run_dashboard() -> None:
 
     with tab4:
         render_meditation_tab(df_meditation)
+
+    with tab5:
+        render_subjective_tab(df_subjective)
 
     st.markdown("---")
     st.markdown(
