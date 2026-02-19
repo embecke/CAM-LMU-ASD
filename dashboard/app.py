@@ -20,11 +20,11 @@ def _render_summary(days_with_data: int, total_hours: float, sleep_nights: int, 
     st.subheader("📊 Available Data Summary")
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Days with Wristband Data", days_with_data)
-    col2.metric("Total Hours Collected", f"{total_hours:.1f}")
+    col2.metric("Wristband Total Hours", f"{total_hours:.1f}")
     col3.metric("Nights with Sleep EEG", sleep_nights)
-    col4.metric("Sleep EEG Hours", f"{sleep_hours:.1f}")
+    col4.metric("Sleep EEG Total Hours", f"{sleep_hours:.1f}")
     col5.metric("Meditation Sessions", meditation_sessions)
-    col6.metric("Meditation Hours", f"{meditation_hours:.1f}")
+    col6.metric("Meditation Total Hours", f"{meditation_hours:.1f}")
 
 
 def run_dashboard() -> None:
@@ -36,8 +36,7 @@ def run_dashboard() -> None:
 
     st.title("🏥 CAM-LMU-ASD Participant Data Dashboard")
     st.markdown(
-        "Visualize preprocessed Wristband biomarkers and Sleep data for each participant. "
-        "*TET data coming soon!*"
+        "Visualize timeline of Wristband wear times, Sleep data, Meditation sessions, and Subjective reports for each participant. "
     )
 
     st.sidebar.header("Configuration")

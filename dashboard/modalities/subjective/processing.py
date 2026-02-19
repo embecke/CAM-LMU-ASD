@@ -11,6 +11,15 @@ SUBJECTIVE_DIR = Path("App")
 DAILY_HINT = "App"
 TEMP_PREFIX = "~$"
 
+# Map logical sections to substrings that should appear in the Excel sheet names.
+# This lets us match sheets regardless of their order within the workbook.
+SECTION_PATTERNS: dict[str, tuple[str, ...]] = {
+    "sleep_diary": ("sleep diary", "sleep_diary", "sleep"),
+    "tet_diary": ("tet diary", "tet_diary", "tet"),
+    "activity_diary": ("activity diary", "activity_diary", "activity"),
+    "tet_meditation": ("tet meditation", "meditation diary", "meditation"),
+}
+
 
 #################### Subjective data Loading and Summarization ####################
 
@@ -41,7 +50,7 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
         for p in excel_files[:20]:
             print(f"[SUBJECTIVE] found_excel: {p}")
 
-    # We expect up to 4 relevant sheets per file in the following order/indexes
+    # We expect up to 4 relevant sheets per file in the following logical order
     sections = ["sleep_diary", "tet_diary", "activity_diary", "tet_meditation"]
 
     for excel_path in excel_files:
@@ -67,7 +76,10 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                 print(f"[SUBJECTIVE] failed_read_excel {excel_path}: {exc}")
             continue
 
-        # iterate expected sheet positions
+        sheet_names = xl.sheet_names
+        used_sheet_names: set[str] = set()
+
+        # iterate expected sections, matching sheet names by alias rather than brute index
         for idx, section in enumerate(sections):
             record: dict[str, object] = {
                 "participant": participant_dir.name,
@@ -78,16 +90,42 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                 "has_data": False,
                 "recording_date": pd.NaT,
                 "recording_date_iso": None,
+                "first_entry_raw": None,
             }
 
-            # If the workbook has fewer sheets than expected, skip that section
-            if idx >= len(xl.sheet_names):
+            patterns = SECTION_PATTERNS.get(section, ())
+            sheet_name = None
+
+            if patterns:
+                for candidate in sheet_names:
+                    if candidate in used_sheet_names:
+                        continue
+                    lower_candidate = candidate.lower()
+                    if any(pattern in lower_candidate for pattern in patterns):
+                        sheet_name = candidate
+                        if debug:
+                            print(
+                                f"[SUBJECTIVE] matched_sheet section={section} pattern_match={candidate} in {excel_path.name}"
+                            )
+                        break
+
+            # Fallback: use positional sheet if alias search failed
+            if sheet_name is None and idx < len(sheet_names):
+                candidate = sheet_names[idx]
+                if candidate not in used_sheet_names:
+                    sheet_name = candidate
+                    if debug:
+                        print(
+                            f"[SUBJECTIVE] fallback_sheet section={section} idx={idx} -> {candidate} in {excel_path.name}"
+                        )
+
+            if sheet_name is None:
                 if debug:
-                    print(f"[SUBJECTIVE] missing_sheet idx={idx} for {excel_path.name}")
+                    print(f"[SUBJECTIVE] missing_sheet section={section} for {excel_path.name}")
                 records.append(record)
                 continue
 
-            sheet_name = xl.sheet_names[idx]
+            used_sheet_names.add(sheet_name)
             record["sheet_name"] = sheet_name
 
             try:
@@ -116,7 +154,7 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
 
             # Determine recording date: "first entry in the last row"
             try:
-                last_row = df_clean.iloc[-1]
+                last_row = df_clean.iloc[-2]
                 # pick the first non-null entry in the last row (safer than iloc[0])
                 first_entry = None
                 for v in last_row:
@@ -124,11 +162,12 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                         first_entry = v
                         break
 
-                if first_entry is None:
-                    record["recording_date"] = pd.NaT
-                    record["recording_date_iso"] = None
-                    records.append(record)
-                    continue
+                # always store the raw first_entry for inspection
+                if first_entry is not None:
+                    try:
+                        record["first_entry_raw"] = str(first_entry)
+                    except Exception:
+                        record["first_entry_raw"] = None
                 
                 # If it's a string like "2024-09-30 21:03:13.560 nachm.", extract the date/time substring
                 if isinstance(first_entry, str):
@@ -140,10 +179,27 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                         if debug:
                             print(f"[SUBJECTIVE] extracted_datetime: {first_entry} from sheet {sheet_name}")
 
-                recording_date = pd.to_datetime(first_entry, errors="coerce")
+                # prefer regex-extracted timestamp; otherwise try parsing the raw value
+                if isinstance(first_entry, str):
+                    m = re.search(r"\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?", first_entry)
+                    if m:
+                        parsed_candidate = m.group(0).replace(",", ".")
+                        if debug:
+                            print(f"[SUBJECTIVE] extracted_datetime: {parsed_candidate} from sheet {sheet_name}")
+                    else:
+                        # no regex match — keep the raw string in first_entry_raw for inspection
+                        parsed_candidate = first_entry
+                else:
+                    parsed_candidate = first_entry
+                
+                print(f"[SUBJECTIVE] parsing_candidate: {parsed_candidate} (type={type(parsed_candidate)}) from sheet {sheet_name} in {excel_path.name}")
+
+                recording_date = pd.to_datetime(parsed_candidate, errors="coerce") if parsed_candidate is not None else pd.NaT
                 record["recording_date"] = recording_date
                 if debug:
-                    print(f"[SUBJECTIVE] parsed_recording_date: {recording_date} (type={type(recording_date)}) from sheet {sheet_name} in {excel_path.name}")
+                    print(
+                        f"[SUBJECTIVE] parsed_recording_date: {recording_date} (type={type(recording_date)}) from sheet {sheet_name} in {excel_path.name}"
+                    )
                 # store ISO string for easier downstream consumption
                 try:
                     record["recording_date_iso"] = recording_date.isoformat() if pd.notna(recording_date) else None
@@ -153,9 +209,6 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                 record["recording_date"] = pd.NaT
                 record["recording_date_iso"] = None
 
-            # add before records.append(record)
-            
-            #print("DEBUG APPEND:", record['section'], record['sheet_name'], record['recording_date'], record.get('recording_date_iso'))
             records.append(record)
 
     df = pd.DataFrame.from_records(records)
