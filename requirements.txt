@@ -13,3 +13,4 @@ streamlit
 plotly
 scipy
 scikit-learn
+kaleido  # for Plotly static image export

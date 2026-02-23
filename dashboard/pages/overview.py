@@ -7,6 +7,7 @@ from plotly.subplots import make_subplots
 
 from dashboard.modalities.wristband.processing import timeline_frame
 from dashboard.modalities.subjective.plots import plot_subjective_timeline
+from dashboard.services.data_quality import wristband_days_with_following_sleep_night, nights_with_following_wristband_day, night_day_summary_table
 
 def row_center_y(row_heights: list[float], row_index: int) -> float:
     return 1.0 - (sum(row_heights[:row_index]) + row_heights[row_index] / 2.0)
@@ -52,7 +53,7 @@ def build_combined_overview(df_all: pd.DataFrame, wear_col: str | None, df_sleep
     has_meditation = not meditation_df.empty
     has_wrist = not timeline_df.empty if isinstance(timeline_df, pd.DataFrame) else False
 
-    ################################## Sleep data processing
+    ################################## Subjective data processing
     # Subjective row (row 1)
     current_row = 1
     sdf_subjective = pd.DataFrame()
@@ -319,7 +320,8 @@ def build_combined_overview(df_all: pd.DataFrame, wear_col: str | None, df_sleep
                 xanchor="left",
                 yanchor="middle",
                 showarrow=False,
-                text="Sleep",
+                # combine sleep with company label as text if available
+                text=f"Sleep ({sleep_df['company'].iloc[0]})" if 'company' in sleep_df.columns else "Fail",
                 font=dict(size=11, color="#333"),
             )
         )
@@ -496,14 +498,52 @@ def build_combined_overview(df_all: pd.DataFrame, wear_col: str | None, df_sleep
     return fig
 
 
-def render_overview_tab(df_all: pd.DataFrame, wear_col: str | None, df_sleep: pd.DataFrame, df_meditation: pd.DataFrame, df_subjective: pd.DataFrame) -> None:
+def render_overview_tab(df_wristband: pd.DataFrame, wear_col: str | None, df_sleep: pd.DataFrame, df_meditation: pd.DataFrame, df_subjective: pd.DataFrame) -> None:
     st.header("Data Overview")
     st.subheader("Combined Timeline: Wristband + Sleep + Meditation + Subjective")
-    combined = build_combined_overview(df_all, wear_col, df_sleep, df_meditation, df_subjective)
+    combined = build_combined_overview(df_wristband, wear_col, df_sleep, df_meditation, df_subjective)
+    
+    
     if combined:
-        st.plotly_chart(combined, use_container_width=True)
+        st.plotly_chart(combined, use_container_width=True) 
+
+        # Export controls to compare participants offline
+        col_png, col_html = st.columns(2)
+
+        with col_png:
+            try:
+                png_bytes = combined.to_image(format="png", scale=2)
+                st.download_button(
+                    label="Download overview (PNG)",
+                    data=png_bytes,
+                    file_name="participant_overview.png",
+                    mime="image/png",
+                )
+            except Exception:
+                st.info("PNG export needs the 'kaleido' package (pip install kaleido).")
+
+        with col_html:
+            html_bytes = combined.to_html(full_html=False, include_plotlyjs="cdn").encode("utf-8")
+            st.download_button(
+                label="Download interactive HTML",
+                data=html_bytes,
+                file_name="participant_overview.html",
+                mime="text/html",
+            )
     else:
-        st.info("No timeline data available to plot a combined view.")
+        st.info("No timeline data available to plot a combined view.")      
+    
+    st.subheader("Cross-modality data quality")
+    if not df_sleep.empty and wear_col is not None and not df_wristband.empty:   
+        summary_table = night_day_summary_table(df_sleep, df_wristband, wear_col=wear_col, coverage_threshold=0.6)
+        if not summary_table.empty:
+            st.subheader("Night-Day Summary Table")
+            st.dataframe(summary_table)
+        else:
+            st.info("No valid night-day pairs found to summarize.")
+    else:
+        st.info("Not enough data to compute wristband-sleep relationship insights.")
+    
 
 
 __all__ = ["build_combined_overview", "render_overview_tab"]

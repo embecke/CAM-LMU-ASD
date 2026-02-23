@@ -91,6 +91,9 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                 "recording_date": pd.NaT,
                 "recording_date_iso": None,
                 "first_entry_raw": None,
+                "expected": False,
+                "color": None, 
+                "color_int": None,
             }
 
             patterns = SECTION_PATTERNS.get(section, ())
@@ -217,4 +220,116 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
         df["recording_date_iso"] = None
     # Coerce recording_date to datetime dtype
     df["recording_date"] = pd.to_datetime(df["recording_date"], errors="coerce")
+
+    # Matched date: assign entries that were recorded after midnight to the
+    # previous calendar day when they conceptually belong to the prior evening.
+    # Default heuristic: for activity and TET diaries, timestamps between
+    # 00:00 and 06:00 are attributed to the previous day.
+    CUTOFF_HOUR = 6
+
+    def _compute_matched_date(row: pd.Series) -> pd.Timestamp | pd.NaT:
+        dt = row.get("recording_date")
+        if pd.isna(dt):
+            return pd.NaT
+        section = row.get("section")
+        try:
+            hour = int(dt.hour)
+        except Exception:
+            hour = None
+        # apply heuristic to these diary types
+        if section in ("activity_diary", "tet_diary") and hour is not None and hour < CUTOFF_HOUR:
+            return (pd.to_datetime(dt).normalize() - pd.Timedelta(days=1))
+        return pd.to_datetime(dt).normalize()
+
+    df["matched_date"] = df.apply(_compute_matched_date, axis=1)
+    # ISO string for convenience
+    df["matched_date_iso"] = df["matched_date"].apply(lambda d: d.isoformat() if pd.notna(d) else None)
+    
+    
+    
+    # --- Determine where missing data is expected vs unexpected ---
+    # Per-file matched date (many sheets come from the same workbook/file)
+    def _file_max(dt_series: pd.Series) -> pd.Timestamp | pd.NaT:
+        s = dt_series.dropna()
+        return s.max() if not s.empty else pd.NaT
+
+    df["file_matched_date"] = df.groupby("file")["matched_date"].transform(_file_max)
+
+    # Participant-level first/last observation dates
+    participant_last = df.loc[df["has_data"], "matched_date"].groupby(df["participant"]).max()
+    df["participant_last_date"] = df["participant"].map(participant_last)
+
+    tet_first = (
+        df.loc[(df["section"] == "tet_meditation") & (df["has_data"]), "matched_date"]
+        .groupby(df["participant"])
+        .min()
+    )
+    df["tet_first_date"] = df["participant"].map(tet_first)
+
+    # Default: missing data is unexpected
+    df["expected"] = False
+
+    # Work on missing records only
+    missing_mask = ~df["has_data"]
+
+    # Case 1: it's expected that TET meditation only starts after some days —
+    # so for files dated before the participant's first observed tet_meditation, mark expected
+    mask_tet_early = (
+        missing_mask
+        & (df["section"] == "tet_meditation")
+        & df["file_matched_date"].notna()
+        & df["tet_first_date"].notna()
+        & (df["file_matched_date"] < df["tet_first_date"])
+    )
+    df.loc[mask_tet_early, "expected"] = True
+
+    # Case 2: it's expected that there is no tet meditation, tet diary or activity diary
+    # on the last day of data collection for the participant
+    last_day_sections = ("tet_meditation", "tet_diary", "activity_diary")
+    mask_last_day = (
+        missing_mask
+        & df["section"].isin(last_day_sections)
+        & df["file_matched_date"].notna()
+        & df["participant_last_date"].notna()
+        & (df["file_matched_date"] == df["participant_last_date"])
+    )
+    df.loc[mask_last_day, "expected"] = True
+
+    # Populate `color` column with clear, deterministic states so plotting
+    # and downstream logic can rely on a single source of truth.
+    # States (strings):
+    # - 'white' = unknown / initialized
+    # - 'green' = has_data == True
+    # - 'grey'  = has_data == False but expected == True (missing but expected)
+    # - 'red'   = has_data == False and expected == False (unexpected missing)
+    df["color"] = "white"
+
+    # mark rows where data is present
+    df.loc[df["has_data"] == True, "color"] = "green"
+
+    # missing but expected -> grey
+    df.loc[(df["has_data"] == False) & (df["expected"] == True), "color"] = "grey"
+
+    # missing and unexpected -> red
+    df.loc[(df["has_data"] == False) & (df["expected"] == False), "color"] = "red"
+
+    # Add integer mapping for colors for easier downstream processing/plotting
+    _color_map = {"white": 0, "grey": 1, "green": 2, "red": 3}
+    df["color_int"] = df["color"].map(_color_map).fillna(0).astype(int)
+
     return df
+
+
+def summarize_subjective_data(df: pd.DataFrame) -> dict[str, object]:
+    """Summarize subjective data availability and coverage for a participant based on the tidy dataframe produced by load_subjective_data."""
+    summary = {}
+    if df.empty:
+        return summary
+
+    # Count how many sheets of each section have data
+    for section in df["section"].unique():
+        section_df = df[df["section"] == section]
+        summary[f"{section}_sheets_with_data"] = int(section_df["has_data"].sum())
+        summary[f"{section}_total_sheets"] = len(section_df)
+
+    return summary

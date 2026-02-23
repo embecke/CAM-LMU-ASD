@@ -115,6 +115,8 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
             continue
         if not has_dreem:
             # Placeholder for future Bitbrain handling: skip for now
+            
+            
             if debug:
                 print(f"[EEG] skipping (not Dreem): {csv_path.name}")
             continue
@@ -133,6 +135,8 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
         # `key,value` pairs (no header). Fall back to table parsing if needed.
         start = pd.NaT
         stop = pd.NaT
+        # add company label
+        company = "Dreem"
 
         # Try key/value parsing first (matches provided example CSV)
         kv = _read_key_value_csv(csv_path, debug=debug)
@@ -168,9 +172,10 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
                 "start": start,
                 "stop": stop,
                 "duration_hours": duration_hours,
+                "company": company,
             }
         )
-
+    print(f"Records: {records}")
     return pd.DataFrame.from_records(records)
 
 
