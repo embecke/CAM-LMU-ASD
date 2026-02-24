@@ -195,7 +195,6 @@ def load_subjective_data(participant_path: str | Path, debug: bool = True) -> pd
                 else:
                     parsed_candidate = first_entry
                 
-                print(f"[SUBJECTIVE] parsing_candidate: {parsed_candidate} (type={type(parsed_candidate)}) from sheet {sheet_name} in {excel_path.name}")
 
                 recording_date = pd.to_datetime(parsed_candidate, errors="coerce") if parsed_candidate is not None else pd.NaT
                 record["recording_date"] = recording_date

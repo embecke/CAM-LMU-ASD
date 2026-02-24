@@ -175,7 +175,6 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
                 "company": company,
             }
         )
-    print(f"Records: {records}")
     return pd.DataFrame.from_records(records)
 
 

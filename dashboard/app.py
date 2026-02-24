@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
-
 import streamlit as st
 
 from dashboard.config import DEFAULT_DATA_BASE_PATH
@@ -16,6 +14,7 @@ from dashboard.pages.overview import build_combined_overview, render_overview_ta
 from dashboard.pages.sleep import render_sleep_tab
 from dashboard.pages.subjective import render_subjective_tab
 from dashboard.pages.wristband import render_wristband_tab
+from dashboard.services.cohort_builder import _build_cohort_table
 from dashboard.services.data_loader import get_sleep_reports, get_wristband_data, get_meditation_data, get_subjective_data
 from dashboard.services.data_quality import wristband_days_with_following_sleep_night, nights_with_following_wristband_day
 
@@ -37,8 +36,6 @@ def _render_summary(days_with_data: int, total_hours: float, sleep_nights: int, 
     col7.metric("Activity Diary Amount", activity_diary_sheets)
     col11.metric("TET Meditation Amount", tet_meditation_sheets)
 
-
-
 def run_dashboard() -> None:
     st.set_page_config(
         page_title="CAM-LMU-ASD Participant Dashboard",
@@ -46,10 +43,8 @@ def run_dashboard() -> None:
         initial_sidebar_state="expanded",
     )
 
-    st.title("🏥 CAM-LMU-ASD Participant Data Dashboard")
-    st.markdown(
-        "Visualize timeline of Wristband wear times, Sleep data, Meditation sessions, and Subjective reports for each participant. "
-    )
+    if "view_mode" not in st.session_state:
+        st.session_state["view_mode"] = "participant"
 
     st.sidebar.header("Configuration")
     data_base_path = st.sidebar.text_input(
@@ -57,10 +52,6 @@ def run_dashboard() -> None:
         value=DEFAULT_DATA_BASE_PATH,
         help="Path where original participant folders are stored (e.g., LMU_STREAM_HC_001, etc.)",
     )
-
-    # view mode toggle stored in session state
-    if "view_mode" not in st.session_state:
-        st.session_state["view_mode"] = "participant"
 
     if not Path(data_base_path).exists():
         st.warning(f"⚠️ Data path does not exist: {data_base_path}")
@@ -71,25 +62,20 @@ def run_dashboard() -> None:
         st.error("❌ No participant folders found in the specified path")
         st.stop()
 
-    # participant selection (only in participant view)
-    selected_participant = None
+    st.sidebar.markdown("---")
     if st.session_state.get("view_mode") == "participant":
         selected_participant = st.sidebar.selectbox(
             "Select Participant:",
             participants,
             help="Choose a participant to view their data",
         )
-
-        # set one participant for testing purposes
+        # for testing purposes, you can set a default participant here
         selected_participant = "Stream_LMU_HC_008_2024_30092024"
-
-        participant_dir = participant_path(data_base_path, selected_participant)
-
-        st.sidebar.markdown("---")
         st.sidebar.subheader(f"Participant: {selected_participant}")
+    else:
+        selected_participant = None
 
     st.sidebar.markdown("---")
-    # Coverage threshold slider (percentage)
     threshold_pct = st.sidebar.slider(
         "Wristband coverage threshold (%)",
         min_value=0,
@@ -101,7 +87,6 @@ def run_dashboard() -> None:
     coverage_threshold = float(threshold_pct) / 100.0
 
     st.sidebar.markdown("---")
-    # cohort navigation buttons at bottom
     if st.session_state.get("view_mode") == "cohort":
         if st.sidebar.button("Back to participant page"):
             st.session_state["view_mode"] = "participant"
@@ -111,62 +96,9 @@ def run_dashboard() -> None:
             st.session_state["view_mode"] = "cohort"
             st.rerun()
 
-    if st.session_state.get("view_mode") == "participant":
-        with st.spinner(f"Loading data for {selected_participant}..."):
-            df_wristband, wristband_wear_col = get_wristband_data(str(participant_dir))
-            df_sleep = get_sleep_reports(str(participant_dir))
-            df_meditation = get_meditation_data(str(participant_dir))
-            df_subjective = get_subjective_data(str(participant_dir))
-            wristband_summary, wristband_summary_hours = summarize_collection(df_wristband)
-            sleep_summary, sleep_summary_hours = summarize_sleep_recordings(df_sleep)
-            meditation_summary, meditation_hours = summarize_meditation_recordings(df_meditation)
-            # compute cross-modality counts based on chosen coverage threshold
-            nights_with_day_cnt, _ = nights_with_following_wristband_day(
-                df_sleep, df_wristband, wear_col=wristband_wear_col, coverage_threshold=coverage_threshold
-            )
-            days_with_night_cnt, _ = wristband_days_with_following_sleep_night(
-                df_sleep, df_wristband, wear_col=wristband_wear_col, coverage_threshold=coverage_threshold
-            )
-
-        _render_summary(wristband_summary, wristband_summary_hours, sleep_summary, sleep_summary_hours, meditation_summary, meditation_hours,
-                        sleep_diary_sheets=summarize_subjective_data(df_subjective).get("sleep_diary_sheets_with_data", 0),
-                        tet_diary_sheets=summarize_subjective_data(df_subjective).get("tet_diary_sheets_with_data", 0),
-                        activity_diary_sheets=summarize_subjective_data(df_subjective).get("activity_diary_sheets_with_data", 0),
-                        tet_meditation_sheets=summarize_subjective_data(df_subjective).get("tet_meditation_sheets_with_data", 0))
-
-        # show additional cross-modality availability metrics based on threshold
-        st.subheader("🔗 Cross-Modality Data Quality Metrics")
-        col7, col8, col9, col10, col11, col12 = st.columns(6)
-        col7.metric(f"Nights with following day (≥{threshold_pct}%)", nights_with_day_cnt)
-        col8.metric(f"Days (with ≥{threshold_pct}%) with following night", days_with_night_cnt)
-
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📅 Data Overview",
-            "❤️ Wristband Biomarkers",
-            "🌙 Sleep Data",
-            "🧘 Meditation Data",
-            "📝 Subjective Data",
-        ])
-
-        with tab1:
-            render_overview_tab(df_wristband, wristband_wear_col, df_sleep, df_meditation, df_subjective)
-
-        with tab2:
-            render_wristband_tab(df_wristband, wristband_wear_col)
-
-        with tab3:
-            render_sleep_tab(df_sleep)
-
-        with tab4:
-            render_meditation_tab(df_meditation)
-
-        with tab5:
-            render_subjective_tab(df_subjective)
-
-
-    else:
+    if st.session_state.get("view_mode") == "cohort":
         st.title("👥 Cohort Summary")
-        
+        st.caption("Aggregate metrics across all participants plus side-by-side overviews.")
 
         tab_table, tab_overviews = st.tabs([
             "Summary Table",
@@ -182,7 +114,7 @@ def run_dashboard() -> None:
 
             cohort_df = st.session_state.get("cohort_df") if "cohort_df" in st.session_state else None
             if cohort_df is not None and not cohort_df.empty:
-                st.dataframe(cohort_df, width='stretch')
+                st.dataframe(cohort_df, width="stretch")
                 csv_bytes = cohort_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     "Download CSV",
@@ -195,7 +127,7 @@ def run_dashboard() -> None:
 
         with tab_overviews:
             st.subheader("All Participant Overviews")
-            st.caption("Renders each participant's combined timeline for side-by-side visual comparison. May take a few seconds for many participants.")
+            st.caption("Renders each participant's combined timeline for side-by-side visual comparison.")
 
             selected_for_overview = st.multiselect(
                 "Choose participants to render",
@@ -229,12 +161,81 @@ def run_dashboard() -> None:
                     else:
                         st.info("No timeline data available for this participant.")
 
-    st.markdown("---")
-    st.markdown(
-        """
+        st.markdown("---")
+        st.markdown(
+            """
 <div style='text-align: center; color: gray; font-size: 12px;'>
     CAM-LMU-STREAM Dashboard | Built with Streamlit | Wristband & Sleep Data |
 </div>
 """,
-        unsafe_allow_html=True,
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.title("🏥 CAM-LMU-ASD Participant Data Dashboard")
+    st.markdown(
+        "Visualize timeline of Wristband wear times, Sleep data, Meditation sessions, and Subjective reports for each participant. "
     )
+
+    # for testing purposes, you can set a default participant here
+    selected_participant = selected_participant or "Stream_LMU_HC_008_2024_30092024"
+
+    participant_dir = participant_path(data_base_path, selected_participant)
+
+    with st.spinner(f"Loading data for {selected_participant}..."):
+        df_wristband, wristband_wear_col = get_wristband_data(str(participant_dir))
+        df_sleep = get_sleep_reports(str(participant_dir))
+        df_meditation = get_meditation_data(str(participant_dir))
+        df_subjective = get_subjective_data(str(participant_dir))
+        wristband_summary, wristband_summary_hours = summarize_collection(df_wristband)
+        sleep_summary, sleep_summary_hours = summarize_sleep_recordings(df_sleep)
+        meditation_summary, meditation_hours = summarize_meditation_recordings(df_meditation)
+        nights_with_day_cnt, _ = nights_with_following_wristband_day(
+            df_sleep, df_wristband, wear_col=wristband_wear_col, coverage_threshold=coverage_threshold
+        )
+        days_with_night_cnt, _ = wristband_days_with_following_sleep_night(
+            df_sleep, df_wristband, wear_col=wristband_wear_col, coverage_threshold=coverage_threshold
+        )
+
+    _render_summary(
+        wristband_summary,
+        wristband_summary_hours,
+        sleep_summary,
+        sleep_summary_hours,
+        meditation_summary,
+        meditation_hours,
+        sleep_diary_sheets=summarize_subjective_data(df_subjective).get("sleep_diary_sheets_with_data", 0),
+        tet_diary_sheets=summarize_subjective_data(df_subjective).get("tet_diary_sheets_with_data", 0),
+        activity_diary_sheets=summarize_subjective_data(df_subjective).get("activity_diary_sheets_with_data", 0),
+        tet_meditation_sheets=summarize_subjective_data(df_subjective).get("tet_meditation_sheets_with_data", 0),
+    )
+
+    st.subheader("🔗 Cross-Modality Data Quality Metrics")
+    col7, col8, col9, col10, col11, col12 = st.columns(6)
+    col7.metric(f"Nights with following day (≥{threshold_pct}%)", nights_with_day_cnt)
+    col8.metric(f"Days (with ≥{threshold_pct}%) with following night", days_with_night_cnt)
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📅 Data Overview",
+        "❤️ Wristband Biomarkers",
+        "🌙 Sleep Data",
+        "🧘 Meditation Data",
+        "📝 Subjective Data",
+    ])
+
+    with tab1:
+        render_overview_tab(df_wristband, wristband_wear_col, df_sleep, df_meditation, df_subjective)
+
+    with tab2:
+        render_wristband_tab(df_wristband, wristband_wear_col)
+
+    with tab3:
+        render_sleep_tab(df_sleep)
+
+    with tab4:
+        render_meditation_tab(df_meditation)
+
+    with tab5:
+        render_subjective_tab(df_subjective)
+
+
