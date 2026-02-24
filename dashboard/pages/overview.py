@@ -6,7 +6,6 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 from dashboard.modalities.wristband.processing import timeline_frame
-from dashboard.modalities.subjective.plots import plot_subjective_timeline
 from dashboard.services.data_quality import wristband_days_with_following_sleep_night, nights_with_following_wristband_day, night_day_summary_table
 
 def row_center_y(row_heights: list[float], row_index: int) -> float:
@@ -505,7 +504,7 @@ def render_overview_tab(df_wristband: pd.DataFrame, wear_col: str | None, df_sle
     
     
     if combined:
-        st.plotly_chart(combined, use_container_width=True) 
+        st.plotly_chart(combined, width='stretch') 
 
         # Export controls to compare participants offline
         col_png, col_html = st.columns(2)

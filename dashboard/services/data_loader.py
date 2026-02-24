@@ -23,7 +23,7 @@ def get_meditation_data(path_str: str) -> pd.DataFrame:
 
 @st.cache_data
 def get_subjective_data(path_str: str) -> pd.DataFrame:
-    return load_subjective_data(path_str, debug=True)
+    return load_subjective_data(path_str, debug=False)
 
 
 __all__ = ["get_wristband_data", "get_sleep_reports", "get_meditation_data", "get_subjective_data"]

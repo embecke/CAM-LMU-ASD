@@ -4,8 +4,6 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.modalities.subjective.plots import (
-    plot_subjective_simple_heatmap,
-    plot_subjective_timeline,
     plot_subjective_availability_heatmap,
 )
 
@@ -42,12 +40,12 @@ def render_subjective_tab(df_subjective: pd.DataFrame) -> None:
     #     df_display["matched_date"] = df_display.apply(_compute_matched_date_local, axis=1)
     #     df_display["matched_date_iso"] = df_display["matched_date"].apply(lambda d: d.isoformat() if pd.notna(d) else None)
 
-    st.plotly_chart(plot_subjective_timeline(df_display), use_container_width=True)
+    #st.plotly_chart(plot_subjective_timeline(df_display), use_container_width=True)
     
-    st.plotly_chart(plot_subjective_simple_heatmap(df_display), use_container_width=True, key="test")
+    #st.plotly_chart(plot_subjective_simple_heatmap(df_display), use_container_width=True, key="test")
 
     # availability heatmap: shows which days have subjective records (per participant/file)
-    st.plotly_chart(plot_subjective_availability_heatmap(df_display), use_container_width=True)
+    st.plotly_chart(plot_subjective_availability_heatmap(df_display), width='stretch')
 
 
     display_cols = [
@@ -70,6 +68,6 @@ def render_subjective_tab(df_subjective: pd.DataFrame) -> None:
         ]
         if col in df_display.columns
     ]
-    st.dataframe(df_display[display_cols], use_container_width=True)
+    st.dataframe(df_display[display_cols], width='stretch')
     
 __all__ = ["render_subjective_tab"]
