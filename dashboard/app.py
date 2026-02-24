@@ -70,7 +70,7 @@ def run_dashboard() -> None:
             help="Choose a participant to view their data",
         )
         # for testing purposes, you can set a default participant here
-        selected_participant = "Stream_LMU_HC_008_2024_30092024"
+        selected_participant = "Stream_LMU_HC_009_2025_10062025" #"Stream_LMU_HC_008_2024_30092024"
         st.sidebar.subheader(f"Participant: {selected_participant}")
     else:
         selected_participant = None

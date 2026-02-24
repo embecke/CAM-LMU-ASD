@@ -1,6 +1,6 @@
 """Configuration and constants for dashboard modules."""
 
-DEFAULT_DATA_BASE_PATH = "C:\\Users\\becke\\Documents\\PhD_NEVIA\\Data_STREAM"
+DEFAULT_DATA_BASE_PATH = "C:\\Users\\becke\\Documents\\PhD_NEVIA\\Data_STREAM\\raw"
 
 WEARING_BINS = [0, 1, 50, 75, 100, 101]
 WEARING_LABELS = ["0%", "1-49%", "50-74%", "75-99%", "100%"]

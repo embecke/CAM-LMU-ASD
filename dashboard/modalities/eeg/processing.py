@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
 import pandas as pd
-
+import datetime as dt
 
 # Base folders relative to the participant directory (use Path for reliable joins)
 SLEEP_DIR = Path("EEG") / "Night"
@@ -13,6 +14,8 @@ DREEM_HINT = "dreem"
 
 
 #################### Sleep Loading and Summarization ####################
+
+# Helper function for Dreem processing
 def _read_key_value_csv(csv_path: Path, debug: bool = False) -> dict:
     """Read CSVs that contain key,value rows and return a dict of values.
 
@@ -69,6 +72,41 @@ def _read_key_value_csv(csv_path: Path, debug: bool = False) -> dict:
         print(f"[EEG] no key/value pairs found in {csv_path}")
     return {}
 
+# Helper function for Bitbrain timestamp parsing
+def ts_to_iso(ts):
+    if ts > 1e17:          # likely nanoseconds
+        seconds = ts / 1_000_000_000
+    elif ts > 1e14:        # likely microseconds
+        seconds = ts / 1_000_000
+    else:                  # seconds
+        seconds = ts
+    return dt.datetime.fromtimestamp(seconds, tz=dt.timezone.utc).isoformat()
+
+
+def is_dreem(participant_path: str | Path, debug: bool = False) -> bool:
+    """Return True if any CSV under the participant's sleep EEG folder
+    contains both the REPORT_FILE_HINT and DREEM_HINT in its filename.
+
+    This mirrors the file-discovery logic in `load_sleep_reports` but only
+    checks for presence of Dreem-style report CSVs.
+    """
+    participant_dir = Path(participant_path)
+    sleep_base = participant_dir / SLEEP_DIR
+
+    if not sleep_base.exists() or not sleep_base.is_dir():
+        return False
+
+    for csv_path in sleep_base.rglob("*.csv"):
+        name_lower = csv_path.name.lower()
+        if REPORT_FILE_HINT in name_lower and DREEM_HINT in name_lower:
+            if debug:
+                print(f"[EEG] Dreem report found: {csv_path}")
+            return True
+    if debug:
+        print("[EEG] No Dreem report CSVs found")
+    return False
+
+
 
 def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.DataFrame:
     """Collect record start/stop times from Dreem sleep report CSVs.
@@ -98,6 +136,73 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
         print(f"[EEG] discovered_csv_count={len(all_csvs)}")
         for p in all_csvs[:20]:
             print(f"[EEG] found_csv: {p}")
+    # If the participant appears to be Dreem-recorded, keep the existing
+    # Dreem CSV-based loading logic. Otherwise, try to discover Bitbrain
+    # `info.json` files and extract UTC t0/tn from them.
+    if not is_dreem(participant_dir, debug=debug):
+        # discover Bitbrain info.json files under the same sleep base
+        info_files = list(sleep_base.rglob("E00recordingR000/info.json")) if sleep_base.exists() else []
+        if debug:
+            print(f"[EEG] discovered_bitbrain_info_count={len(info_files)}")
+            for p in info_files[:20]:
+                print(f"[EEG] found_info: {p}")
+
+        for info_file in info_files:
+            try:
+                info = json.loads(info_file.read_text(encoding='utf-8'))
+            except Exception:
+                try:
+                    info = json.loads(info_file.read_text(encoding='latin1'))
+                except Exception as e:
+                    if debug:
+                        print(f"[EEG] failed reading info.json: {info_file} {e}")
+                    continue
+
+            # derive night name from path relative to sleep_base
+            try:
+                rel = info_file.relative_to(sleep_base)
+                night_name = rel.parts[0] if rel.parts else info_file.parent.parent.name
+            except Exception:
+                night_name = info_file.parent.parent.name
+
+            # pick EEG signal entry (or first with utc)
+            start = pd.NaT
+            stop = pd.NaT
+            company = "Bitbrain"
+            for sig in info.get("signals", []):
+                if sig.get("signal_type") == "eeg":
+                    utc = sig.get("internal", {}).get("utc", {})
+                    if utc and "t0" in utc and "tn" in utc:
+                        try:
+                            start = pd.to_datetime(ts_to_iso(utc["t0"]), errors="coerce")
+                            stop = pd.to_datetime(ts_to_iso(utc["tn"]), errors="coerce")
+                        except Exception:
+                            start = pd.NaT
+                            stop = pd.NaT
+                        break
+
+            if pd.isna(start) or pd.isna(stop):
+                if debug:
+                    print(f"[EEG] missing start/stop in {info_file}, skipping")
+                continue
+
+            duration_hours = (stop - start).total_seconds() / 3600 if stop > start else 0.0
+
+            records.append(
+                {
+                    "night": night_name,
+                    "file": info_file.name,
+                    "start": start,
+                    "stop": stop,
+                    "duration_hours": duration_hours,
+                    "company": company,
+                }
+            )
+
+        # return records found for Bitbrain (or empty)
+        return pd.DataFrame.from_records(records)
+
+    # If Dreem, proceed to examine discovered CSVs as before
 
     for csv_path in all_csvs:
         if not csv_path.is_file():
@@ -114,9 +219,6 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
         if not has_report:
             continue
         if not has_dreem:
-            # Placeholder for future Bitbrain handling: skip for now
-            
-            
             if debug:
                 print(f"[EEG] skipping (not Dreem): {csv_path.name}")
             continue
