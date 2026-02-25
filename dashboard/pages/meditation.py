@@ -16,7 +16,7 @@ def render_meditation_tab(df_meditation: pd.DataFrame) -> None:
     
     st.plotly_chart(plot_meditation_duration(df_meditation), width="stretch")
 
-    display_cols = [col for col in ["session", "start", "stop", "duration_minutes", "file"] if col in df_meditation.columns]
-    st.dataframe(df_meditation[display_cols], width="stretch")
+    #display_cols = [col for col in ["session", "start", "stop", "duration_minutes", "file"] if col in df_meditation.columns]
+    #st.dataframe(df_meditation[display_cols], width="stretch")
     
 __all__ = ["render_meditation_tab"]

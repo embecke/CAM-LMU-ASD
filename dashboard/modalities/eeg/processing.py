@@ -368,7 +368,9 @@ def load_meditation_reports(participant_path: str | Path, debug: bool = True) ->
             except Exception:
                 session = info_file.parent.parent.name
 
+            company = "Bitbrain"
             duration_hours = (stop - start).total_seconds() / 3600 if stop > start else 0.0
+            
             records.append(
                 {
                     "session": session,
@@ -376,6 +378,7 @@ def load_meditation_reports(participant_path: str | Path, debug: bool = True) ->
                     "start": start,
                     "stop": stop,
                     "duration_minutes": duration_hours * 60,
+                    "company": company,
                 }
             )
         return pd.DataFrame.from_records(records)
@@ -416,7 +419,9 @@ def load_meditation_reports(participant_path: str | Path, debug: bool = True) ->
                 print(f"Still [Meditation] missing start/stop for {csv_path.name}, skipping")
             continue
 
+        company = "Dreem"
         duration_hours = (stop - start).total_seconds() / 3600 if stop > start else 0.0
+        
         records.append(
             {
                 "session": session,
@@ -424,6 +429,7 @@ def load_meditation_reports(participant_path: str | Path, debug: bool = True) ->
                 "start": start,
                 "stop": stop,
                 "duration_minutes": duration_hours * 60,
+                "company": company,
             }
         )
 

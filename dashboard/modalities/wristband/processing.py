@@ -137,8 +137,6 @@ def summarize_wristband_recordings(df_wristband: pd.DataFrame, wear_col: str | N
     for each day (derived via `hours_per_bin_table`) and counts how many days
     have any wearing time.
     """
-    print('wristband columns:', df_wristband.columns.tolist())
-    [c for c in df_wristband.columns if "wear" in c.lower() or "wearing" in c.lower()]
     if df_wristband.empty:
         return 0, 1.0
 

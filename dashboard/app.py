@@ -18,6 +18,16 @@ from dashboard.services.cohort_builder import _build_cohort_table
 from dashboard.services.data_loader import get_sleep_reports, get_wristband_data, get_meditation_data, get_subjective_data
 from dashboard.services.data_quality import wristband_days_with_following_sleep_night, nights_with_following_wristband_day
 
+# Suppress specific warnings from plotly about nanoseconds in datetime conversion, which can occur with certain timestamp formats in the data but do not affect the overall functionality of the dashboard.
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="Discarding nonzero nanoseconds in conversion.",
+    category=UserWarning,
+    module=r"plotly\.io\._json",
+)
+
 
 def _render_summary(wristband_days: int, wristband_total_hours: float, sleep_nights: int, sleep_hours: float, meditation_sessions: int, meditation_hours: float, 
                     sleep_diary_sheets: int, tet_diary_sheets: int, activity_diary_sheets: int, tet_meditation_sheets: int) -> None:

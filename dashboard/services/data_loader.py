@@ -15,7 +15,7 @@ def get_wristband_data(path_str: str) -> tuple[pd.DataFrame, str | None]:
 
 @st.cache_data
 def get_sleep_reports(path_str: str) -> pd.DataFrame:
-    return load_sleep_reports(path_str, debug=True)
+    return load_sleep_reports(path_str, debug=False)
 
 @st.cache_data
 def get_meditation_data(path_str: str) -> pd.DataFrame:

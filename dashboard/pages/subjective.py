@@ -68,6 +68,6 @@ def render_subjective_tab(df_subjective: pd.DataFrame) -> None:
         ]
         if col in df_display.columns
     ]
-    st.dataframe(df_display[display_cols], width='stretch')
+    #st.dataframe(df_display[display_cols], width='stretch')
     
 __all__ = ["render_subjective_tab"]
