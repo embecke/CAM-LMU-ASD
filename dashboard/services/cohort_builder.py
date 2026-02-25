@@ -6,7 +6,7 @@ from dashboard.data_access.participants import participant_path
 from dashboard.services.data_loader import get_meditation_data, get_sleep_reports, get_subjective_data, get_wristband_data
 from dashboard.services.data_quality import nights_with_following_wristband_day, wristband_days_with_following_sleep_night
 from dashboard.modalities.eeg.processing import summarize_meditation_recordings, summarize_sleep_recordings
-from dashboard.modalities.wristband.processing import summarize_collection
+from dashboard.modalities.wristband.processing import summarize_wristband_recordings
 from dashboard.modalities.subjective.processing import summarize_subjective_data
 
 
@@ -24,7 +24,7 @@ def _build_cohort_table(
         df_sleep = get_sleep_reports(str(p_dir))
         df_meditation = get_meditation_data(str(p_dir))
         df_subjective = get_subjective_data(str(p_dir))
-        wristband_days, wristband_total_hours = summarize_collection(df_wristband)
+        wristband_days, wristband_total_hours = summarize_wristband_recordings(df_wristband, wear_col=wear_col)
         sleep_nights, sleep_total_hours = summarize_sleep_recordings(df_sleep)
         meditation_sessions, meditation_total_hours = summarize_meditation_recordings(df_meditation)
 

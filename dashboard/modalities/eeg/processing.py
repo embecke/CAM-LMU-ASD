@@ -15,6 +15,31 @@ DREEM_HINT = "dreem"
 
 #################### Sleep Loading and Summarization ####################
 
+def is_dreem(participant_path: str | Path, debug: bool = False, base_dir: Path = SLEEP_DIR) -> bool:
+    """Return True if any CSV under the given EEG base directory for the
+    participant contains both the REPORT_FILE_HINT and DREEM_HINT in its
+    filename.
+
+    `base_dir` defaults to `SLEEP_DIR` so existing callers do not need to
+    change; pass `base_dir=MEDITATION_DIR` when checking meditation folders.
+    """
+    participant_dir = Path(participant_path)
+    sleep_base = participant_dir / base_dir
+
+    if not sleep_base.exists() or not sleep_base.is_dir():
+        return False
+
+    for csv_path in sleep_base.rglob("*.csv"):
+        name_lower = csv_path.name.lower()
+        if REPORT_FILE_HINT in name_lower and DREEM_HINT in name_lower:
+            if debug:
+                print(f"[EEG] Dreem report found: {csv_path}")
+            return True
+    if debug:
+        print(f"[EEG] No Dreem report CSVs found under {sleep_base}")
+    return False
+
+
 # Helper function for Dreem processing
 def _read_key_value_csv(csv_path: Path, debug: bool = False) -> dict:
     """Read CSVs that contain key,value rows and return a dict of values.
@@ -83,38 +108,84 @@ def ts_to_iso(ts):
     return dt.datetime.fromtimestamp(seconds, tz=dt.timezone.utc).isoformat()
 
 
-def is_dreem(participant_path: str | Path, debug: bool = False) -> bool:
-    """Return True if any CSV under the participant's sleep EEG folder
-    contains both the REPORT_FILE_HINT and DREEM_HINT in its filename.
+def parse_dreem_csv_times(csv_path: Path, debug: bool = False) -> tuple[pd.Timestamp | pd.NaT, pd.Timestamp | pd.NaT]:
+    """Parse `record_start_iso` / `record_stop_iso` from a Dreem report CSV.
 
-    This mirrors the file-discovery logic in `load_sleep_reports` but only
-    checks for presence of Dreem-style report CSVs.
+    Returns (start, stop) as pandas Timestamps or pd.NaT on failure.
     """
-    participant_dir = Path(participant_path)
-    sleep_base = participant_dir / SLEEP_DIR
+    kv = _read_key_value_csv(csv_path, debug=debug)
+    if not kv:
+        return pd.NaT, pd.NaT
 
-    if not sleep_base.exists() or not sleep_base.is_dir():
-        return False
+    record_start_iso = kv.get("record_start_iso")
+    record_stop_iso = kv.get("record_stop_iso")
+    start = pd.NaT
+    stop = pd.NaT
+    if record_start_iso:
+        try:
+            start = pd.to_datetime(record_start_iso, errors="coerce")
+        except Exception:
+            start = pd.NaT
+    if record_stop_iso:
+        try:
+            stop = pd.to_datetime(record_stop_iso, errors="coerce")
+        except Exception:
+            stop = pd.NaT
 
-    for csv_path in sleep_base.rglob("*.csv"):
-        name_lower = csv_path.name.lower()
-        if REPORT_FILE_HINT in name_lower and DREEM_HINT in name_lower:
-            if debug:
-                print(f"[EEG] Dreem report found: {csv_path}")
-            return True
     if debug:
-        print("[EEG] No Dreem report CSVs found")
-    return False
+        if pd.isna(start) or pd.isna(stop):
+            print(f"[EEG] Dreem CSV missing/invalid times: {csv_path}")
+        else:
+            print(f"[EEG] Dreem CSV parsed times: {csv_path} -> {start} / {stop}")
 
+    return start, stop
+
+
+def parse_bitbrain_info_times(info_file: Path, debug: bool = False) -> tuple[pd.Timestamp | pd.NaT, pd.Timestamp | pd.NaT]:
+    """Read a Bitbrain `info.json` and extract UTC t0/tn from the EEG signal.
+
+    Returns (start, stop) as pandas Timestamps or pd.NaT on failure.
+    """
+    text = None
+    try:
+        text = info_file.read_text(encoding="utf-8")
+    except Exception:
+        try:
+            text = info_file.read_text(encoding="latin1")
+        except Exception as e:
+            if debug:
+                print(f"[EEG] cannot read info.json: {info_file} {e}")
+            return pd.NaT, pd.NaT
+
+    try:
+        info = json.loads(text)
+    except Exception as e:
+        if debug:
+            print(f"[EEG] failed parsing JSON {info_file}: {e}")
+        return pd.NaT, pd.NaT
+
+    for sig in info.get("signals", []):
+        if sig.get("signal_type") == "eeg":
+            utc = sig.get("internal", {}).get("utc", {})
+            if utc and "t0" in utc and "tn" in utc:
+                try:
+                    start = pd.to_datetime(ts_to_iso(utc["t0"]), errors="coerce")
+                    stop = pd.to_datetime(ts_to_iso(utc["tn"]), errors="coerce")
+                except Exception:
+                    return pd.NaT, pd.NaT
+                if debug:
+                    print(f"[EEG] Bitbrain info parsed times: {info_file} -> {start} / {stop}")
+                return start, stop
+
+    if debug:
+        print(f"[EEG] no EEG utc timestamps in {info_file}")
+    return pd.NaT, pd.NaT
 
 
 def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.DataFrame:
-    """Collect record start/stop times from Dreem sleep report CSVs.
-
-    For each night folder under the participant's EEG sleep directory, the
-    function searches for CSV files whose names contain both "report" and
-    "dreem". It extracts the first valid `record_start_iso` and
-    `record_stop_iso` values and returns a tidy frame ready for plotting.
+    """Collect record start/stop times from EEG recordings. 
+    Dreem: report CSVs.
+    Bitbrain: info.json files
     """
 
     participant_dir = Path(participant_path)
@@ -129,13 +200,7 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
 
     records: list[dict[str, object]] = []
 
-    # Recursively search for CSV files under the sleep base directory so that
-    # CSVs stored in deeper subfolders are also discovered.
-    all_csvs = list(sleep_base.rglob("*.csv")) if sleep_base.exists() else []
-    if debug:
-        print(f"[EEG] discovered_csv_count={len(all_csvs)}")
-        for p in all_csvs[:20]:
-            print(f"[EEG] found_csv: {p}")
+    
     # If the participant appears to be Dreem-recorded, keep the existing
     # Dreem CSV-based loading logic. Otherwise, try to discover Bitbrain
     # `info.json` files and extract UTC t0/tn from them.
@@ -148,15 +213,11 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
                 print(f"[EEG] found_info: {p}")
 
         for info_file in info_files:
-            try:
-                info = json.loads(info_file.read_text(encoding='utf-8'))
-            except Exception:
-                try:
-                    info = json.loads(info_file.read_text(encoding='latin1'))
-                except Exception as e:
-                    if debug:
-                        print(f"[EEG] failed reading info.json: {info_file} {e}")
-                    continue
+            start, stop = parse_bitbrain_info_times(info_file, debug=debug)
+            if pd.isna(start) or pd.isna(stop):
+                if debug:
+                    print(f"[EEG] missing start/stop in {info_file}, skipping")
+                continue
 
             # derive night name from path relative to sleep_base
             try:
@@ -165,27 +226,7 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
             except Exception:
                 night_name = info_file.parent.parent.name
 
-            # pick EEG signal entry (or first with utc)
-            start = pd.NaT
-            stop = pd.NaT
             company = "Bitbrain"
-            for sig in info.get("signals", []):
-                if sig.get("signal_type") == "eeg":
-                    utc = sig.get("internal", {}).get("utc", {})
-                    if utc and "t0" in utc and "tn" in utc:
-                        try:
-                            start = pd.to_datetime(ts_to_iso(utc["t0"]), errors="coerce")
-                            stop = pd.to_datetime(ts_to_iso(utc["tn"]), errors="coerce")
-                        except Exception:
-                            start = pd.NaT
-                            stop = pd.NaT
-                        break
-
-            if pd.isna(start) or pd.isna(stop):
-                if debug:
-                    print(f"[EEG] missing start/stop in {info_file}, skipping")
-                continue
-
             duration_hours = (stop - start).total_seconds() / 3600 if stop > start else 0.0
 
             records.append(
@@ -203,6 +244,14 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
         return pd.DataFrame.from_records(records)
 
     # If Dreem, proceed to examine discovered CSVs as before
+    
+    # Recursively search for CSV files under the sleep base directory so that
+    # CSVs stored in deeper subfolders are also discovered.
+    all_csvs = list(sleep_base.rglob("*.csv")) if sleep_base.exists() else []
+    if debug:
+        print(f"[EEG] discovered_csv_count={len(all_csvs)}")
+        for p in all_csvs[:20]:
+            print(f"[EEG] found_csv: {p}")
 
     for csv_path in all_csvs:
         if not csv_path.is_file():
@@ -241,23 +290,7 @@ def load_sleep_reports(participant_path: str | Path, debug: bool = True) -> pd.D
         company = "Dreem"
 
         # Try key/value parsing first (matches provided example CSV)
-        kv = _read_key_value_csv(csv_path, debug=debug)
-        if kv:
-            record_start_iso = kv.get("record_start_iso")
-            record_stop_iso = kv.get("record_stop_iso")
-            if record_start_iso:
-                try:
-                    start = pd.to_datetime(record_start_iso, errors="coerce")
-                except Exception:
-                    start = pd.NaT
-            if record_stop_iso:
-                try:
-                    stop = pd.to_datetime(record_stop_iso, errors="coerce")
-                except Exception:
-                    stop = pd.NaT
-
-            if debug:
-                print(f"[EEG] kv parsed start={start} stop={stop} for file={csv_path.name}")
+        start, stop = parse_dreem_csv_times(csv_path, debug=debug)
 
 
         if pd.isna(start) or pd.isna(stop):
@@ -313,8 +346,41 @@ def load_meditation_reports(participant_path: str | Path, debug: bool = True) ->
 
     records: list[dict[str, object]] = []
 
-    # Recursively search for CSV files under the meditation base directory so that
-    # CSVs stored in deeper subfolders are also discovered.
+    # Decide whether this participant used Dreem reports for meditation.
+    if not is_dreem(participant_dir, debug=debug, base_dir=MEDITATION_DIR):
+        # Not Dreem: try Bitbrain-style info.json under meditation folders
+        info_files = list(meditation_base.rglob("E00recordingR000/info.json")) if meditation_base.exists() else []
+        if debug:
+            print(f"[Meditation] discovered_bitbrain_info_count={len(info_files)}")
+            for p in info_files[:20]:
+                print(f"[Meditation] found_info: {p}")
+
+        for info_file in info_files:
+            start, stop = parse_bitbrain_info_times(info_file, debug=debug)
+            if pd.isna(start) or pd.isna(stop):
+                if debug:
+                    print(f"[Meditation] missing start/stop in {info_file}, skipping")
+                continue
+
+            try:
+                rel = info_file.relative_to(meditation_base)
+                session = rel.parts[0] if rel.parts else info_file.parent.parent.name
+            except Exception:
+                session = info_file.parent.parent.name
+
+            duration_hours = (stop - start).total_seconds() / 3600 if stop > start else 0.0
+            records.append(
+                {
+                    "session": session,
+                    "file": info_file.name,
+                    "start": start,
+                    "stop": stop,
+                    "duration_minutes": duration_hours * 60,
+                }
+            )
+        return pd.DataFrame.from_records(records)
+
+    # Dreem: discover CSVs and parse using shared helper
     all_csvs = list(meditation_base.rglob("*.csv")) if meditation_base.exists() else []
     if debug:
         print(f"[Meditation] discovered_csv_count={len(all_csvs)}")
@@ -333,56 +399,24 @@ def load_meditation_reports(participant_path: str | Path, debug: bool = True) ->
         if debug:
             print(f"[Meditation] checking: {csv_path.name} report={has_report} dreem={has_dreem}")
 
-        if not has_report:
-            continue
-        if not has_dreem:
-            # Placeholder for future Bitbrain handling: skip for now
+        if not has_report or not has_dreem:
             if debug:
                 print(f"[Meditation] skipping (not Dreem): {csv_path.name}")
             continue
 
-        # Derive the top-level night folder name relative to the meditation base.
         try:
             rel = csv_path.relative_to(meditation_base)
             session = rel.parts[0] if rel.parts else csv_path.parent.name
         except Exception:
             session = csv_path.parent.name
 
-        if debug:
-            print(f"[Meditation] session derived: {session}")
-
-        # Prefer key/value parsing for Dreem report files which list rows as
-        # `key,value` pairs (no header). Fall back to table parsing if needed.
-        start = pd.NaT
-        stop = pd.NaT
-
-        # Try key/value parsing first (matches provided example CSV)
-        kv = _read_key_value_csv(csv_path, debug=debug)
-        if kv:
-            record_start_iso = kv.get("record_start_iso")
-            record_stop_iso = kv.get("record_stop_iso")
-            if record_start_iso:
-                try:
-                    start = pd.to_datetime(record_start_iso, errors="coerce")
-                except Exception:
-                    start = pd.NaT
-            if record_stop_iso:
-                try:
-                    stop = pd.to_datetime(record_stop_iso, errors="coerce")
-                except Exception:
-                    stop = pd.NaT
-
-            if debug:
-                print(f"[Meditation] kv parsed start={start} stop={stop} for file={csv_path.name}")
-
-
+        start, stop = parse_dreem_csv_times(csv_path, debug=debug)
         if pd.isna(start) or pd.isna(stop):
             if debug:
                 print(f"Still [Meditation] missing start/stop for {csv_path.name}, skipping")
             continue
 
         duration_hours = (stop - start).total_seconds() / 3600 if stop > start else 0.0
-
         records.append(
             {
                 "session": session,

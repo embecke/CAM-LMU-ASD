@@ -16,13 +16,14 @@ def render_wristband_tab(df_all: pd.DataFrame, wear_col: str | None) -> None:
     if not df_all.empty and wear_col is not None and df_all["datetime"].notna().any():
         valid_df = df_all.sort_values("datetime")
         hours_table = hours_per_bin_table(valid_df, wear_col)
+        st.dataframe(hours_table, width="stretch")
 
         st.plotly_chart(plot_wristband_stacked(hours_table), width="stretch")
         st.subheader("Detailed Wearing Detection Events (All Days)")
         st.plotly_chart(plot_wristband_timeline(valid_df, wear_col), width="stretch")
 
-        #show_cols = detailed_columns(valid_df, wear_col)
-        #st.dataframe(valid_df[show_cols], width="stretch")
+        show_cols = detailed_columns(valid_df, wear_col)
+        st.dataframe(valid_df[show_cols], width="stretch")
         return
 
     st.warning("No EmbracePlus wearing detection files found for this participant.")

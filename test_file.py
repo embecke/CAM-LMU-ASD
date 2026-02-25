@@ -1,7 +1,7 @@
 from dashboard.modalities.subjective.processing import load_subjective_data
 
 df_subjective = load_subjective_data(r'C:\Users\becke\Documents\PhD_NEVIA\Data_STREAM\Stream_LMU_HC_008_2024_30092024', debug=True)
-print(df_subjective[['sheet_name','section','recording_date','expected', 'color', 'color_int']].tail(30))
+#print(df_subjective[['sheet_name','section','recording_date','expected', 'color', 'color_int']].tail(30))
 
 # print(df["color"].dropna().sum())
 
@@ -22,3 +22,15 @@ print(df_subjective[['sheet_name','section','recording_date','expected', 'color'
 #     print(f"Section: {group_sorted["color_int"]}")
 #     z[section_idx, :] = group_sorted["color_int"].values
 # z
+
+import datetime as dt
+def ts_to_iso(ts):
+    if ts > 1e17:          # likely nanoseconds
+        seconds = ts / 1_000_000_000
+    elif ts > 1e14:        # likely microseconds
+        seconds = ts / 1_000_000
+    else:                  # seconds
+        seconds = ts
+    return dt.datetime.fromtimestamp(seconds, tz=dt.timezone.utc).isoformat()
+time = ts_to_iso(1750288130217390.8)
+print(time)

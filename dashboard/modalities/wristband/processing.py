@@ -68,41 +68,27 @@ def load_wearing_detection_data(participant_path: str | Path) -> tuple[pd.DataFr
     if not frames:
         return pd.DataFrame(), None
 
-    df_all = pd.concat(frames, ignore_index=True)
-    wear_col = _find_wearing_col(df_all.columns.tolist())
-    return df_all, wear_col
+    df_wristband = pd.concat(frames, ignore_index=True)
+    wear_col = _find_wearing_col(df_wristband.columns.tolist())
+    return df_wristband, wear_col
 
 
-def summarize_collection(df_all: pd.DataFrame) -> tuple[int, float]:
-    """Return days_with_data and total_hours based on unique recorded minutes."""
-    if df_all.empty or "datetime" not in df_all.columns:
-        return 0, 0.0
-
-    valid = df_all.dropna(subset=["datetime"]).copy()
-    if valid.empty:
-        return 0, 0.0
-
-    days_with_data = int(valid["day_folder"].nunique()) if "day_folder" in valid.columns else 0
-    total_hours = valid["datetime"].dt.floor("min").nunique() / 60
-    return days_with_data, float(total_hours)
-
-
-def timeline_frame(df_all: pd.DataFrame, wear_col: str) -> pd.DataFrame:
+def timeline_frame(df_wristband: pd.DataFrame, wear_col: str) -> pd.DataFrame:
     """Return compact timeline frame used for availability visualization."""
-    if df_all.empty or wear_col not in df_all.columns:
+    if df_wristband.empty or wear_col not in df_wristband.columns:
         return pd.DataFrame()
 
-    timeline_df = df_all[["datetime", "day_folder", wear_col]].dropna(subset=["datetime"]).copy()
+    timeline_df = df_wristband[["datetime", "day_folder", wear_col]].dropna(subset=["datetime"]).copy()
     timeline_df["timeline_y"] = 0
     return timeline_df
 
 
-def hours_per_bin_table(df_all: pd.DataFrame, wear_col: str) -> pd.DataFrame:
+def hours_per_bin_table(df_wristband: pd.DataFrame, wear_col: str) -> pd.DataFrame:
     """Build per-day table of wearing-detection hours across percentage bins."""
-    if df_all.empty or wear_col not in df_all.columns:
+    if df_wristband.empty or wear_col not in df_wristband.columns:
         return pd.DataFrame()
 
-    df = df_all.dropna(subset=["datetime"]).copy()
+    df = df_wristband.dropna(subset=["datetime"]).copy()
     if df.empty:
         return pd.DataFrame()
 
@@ -134,11 +120,43 @@ def hours_per_bin_table(df_all: pd.DataFrame, wear_col: str) -> pd.DataFrame:
     return hours_per_bin
 
 
-def detailed_columns(df_all: pd.DataFrame, wear_col: str) -> list[str]:
+def detailed_columns(df_wristband: pd.DataFrame, wear_col: str) -> list[str]:
     """Return columns shown in detailed wearing-detection table."""
-    reason_columns = [column for column in df_all.columns if "reason" in column.lower()]
+    reason_columns = [column for column in df_wristband.columns if "reason" in column.lower()]
     columns = ["datetime", "day_folder", wear_col]
     for column in reason_columns:
         if column not in columns:
             columns.append(column)
-    return [column for column in columns if column in df_all.columns]
+    return [column for column in columns if column in df_wristband.columns]
+
+
+def summarize_wristband_recordings(df_wristband: pd.DataFrame, wear_col: str | None = None) -> tuple[int, float]:
+    """Return (days_with_wearing, total_wearing_hours) using per-bin table.
+
+    The function sums wearing-detection hours across all bins greater than 0%
+    for each day (derived via `hours_per_bin_table`) and counts how many days
+    have any wearing time.
+    """
+    print('wristband columns:', df_wristband.columns.tolist())
+    [c for c in df_wristband.columns if "wear" in c.lower() or "wearing" in c.lower()]
+    if df_wristband.empty:
+        return 0, 1.0
+
+    valid = df_wristband.dropna(subset=["datetime"]).copy()
+    if valid.empty:
+        return 0, 0.0
+
+    hours_table = hours_per_bin_table(valid, wear_col)
+    if hours_table.empty:
+        return 0, 0.0
+
+    zero_label = WEARING_LABELS[0] if WEARING_LABELS else None
+    bin_cols = [c for c in hours_table.columns if c != "Day" and c != zero_label]
+    if not bin_cols:
+        return 0, 0.0
+
+    wearing_hours_per_day = hours_table[bin_cols].sum(axis=1, numeric_only=True)
+    days_with_wearing = int((wearing_hours_per_day > 0).sum())
+    total_hours = float(wearing_hours_per_day.sum())
+
+    return days_with_wearing, total_hours

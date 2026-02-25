@@ -7,7 +7,7 @@ import streamlit as st
 from dashboard.config import DEFAULT_DATA_BASE_PATH
 from dashboard.data_access.participants import list_participants, participant_path
 from dashboard.modalities.eeg.processing import summarize_meditation_recordings, summarize_sleep_recordings
-from dashboard.modalities.wristband.processing import summarize_collection
+from dashboard.modalities.wristband.processing import summarize_wristband_recordings
 from dashboard.modalities.subjective.processing import summarize_subjective_data
 from dashboard.pages.meditation import render_meditation_tab
 from dashboard.pages.overview import build_combined_overview, render_overview_tab
@@ -19,12 +19,12 @@ from dashboard.services.data_loader import get_sleep_reports, get_wristband_data
 from dashboard.services.data_quality import wristband_days_with_following_sleep_night, nights_with_following_wristband_day
 
 
-def _render_summary(days_with_data: int, total_hours: float, sleep_nights: int, sleep_hours: float, meditation_sessions: int, meditation_hours: float, 
+def _render_summary(wristband_days: int, wristband_total_hours: float, sleep_nights: int, sleep_hours: float, meditation_sessions: int, meditation_hours: float, 
                     sleep_diary_sheets: int, tet_diary_sheets: int, activity_diary_sheets: int, tet_meditation_sheets: int) -> None:
     st.subheader("📊 Available Data Summary")
     col1, col2, col3, col4, col5, col6, = st.columns(6)
-    col1.metric("Days with Wristband Data", days_with_data)
-    col2.metric("Wristband Total Hours", f"{total_hours:.1f}")
+    col1.metric("Days with Wristband Data", wristband_days)
+    col2.metric("Wristband Total Hours", f"{wristband_total_hours:.1f}")
     col3.metric("Nights with Sleep EEG", sleep_nights)
     col4.metric("Sleep EEG Total Hours", f"{sleep_hours:.1f}")
     col5.metric("Meditation Sessions", meditation_sessions)
@@ -70,7 +70,8 @@ def run_dashboard() -> None:
             help="Choose a participant to view their data",
         )
         # for testing purposes, you can set a default participant here
-        selected_participant = "Stream_LMU_HC_009_2025_10062025" #"Stream_LMU_HC_008_2024_30092024"
+        selected_participant = "Stream_LMU_HC_009_2025_10062025" 
+        #selected_participant ="Stream_LMU_HC_008_2024_30092024"
         st.sidebar.subheader(f"Participant: {selected_participant}")
     else:
         selected_participant = None
@@ -187,7 +188,7 @@ def run_dashboard() -> None:
         df_sleep = get_sleep_reports(str(participant_dir))
         df_meditation = get_meditation_data(str(participant_dir))
         df_subjective = get_subjective_data(str(participant_dir))
-        wristband_summary, wristband_summary_hours = summarize_collection(df_wristband)
+        wristband_summary, wristband_summary_hours = summarize_wristband_recordings(df_wristband, wear_col=wristband_wear_col)
         sleep_summary, sleep_summary_hours = summarize_sleep_recordings(df_sleep)
         meditation_summary, meditation_hours = summarize_meditation_recordings(df_meditation)
         nights_with_day_cnt, _ = nights_with_following_wristband_day(
